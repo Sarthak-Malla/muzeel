@@ -15,6 +15,8 @@ sys.path.append("..")
 from config import db_details
 sys.path.append(".")
 
+initiatingUrl = ""
+
 requests = {}
 
 class CacheProxy:
@@ -46,19 +48,23 @@ class CacheProxy:
 
 
     def request(self, flow: http.HTTPFlow) -> None:
+        global initiatingUrl
+        
         # store the request time
         requestUrl = flow.request.pretty_url.split("?")[0]
         requests[requestUrl] = time.time()
         flow.initiatingUrl = None
-        initiatingUrl = flow.request.headers["init_url"]
-        del flow.request.headers["init_url"]
-        del flow.request.headers["solution"]
+
+        if "init_url" in flow.request.headers:
+            initiatingUrl = flow.request.headers["init_url"]
+            del flow.request.headers["init_url"]
+            del flow.request.headers["solution"]
         
         try:
             with self.connection.cursor() as cursor:
                 requestUrl = flow.request.pretty_url.split("?")[0]
                 flow.initiatingUrl = self.parseUrl(initiatingUrl)
-                query_template_search = "SELECT headFilePath, updateFilePath, delay, contFilePath FROM cachedPages WHERE requestUrl = '{0}' AND initiatingUrl = '{1}'".format(requestUrl, flow.initiatingUrl)
+                query_template_search = "SELECT headFilePath, updateFilePath, delay, contFilePath, type FROM cachedPages WHERE requestUrl = '{0}' AND initiatingUrl = '{1}'".format(requestUrl, flow.initiatingUrl)
                 cursor.execute(query_template_search)
                 sql_response = cursor.fetchone()
         finally:
@@ -68,7 +74,7 @@ class CacheProxy:
         if not sql_response:
             return
         else:
-            print ("--------- CACHE HIT {} -----------".format(requestUrl))
+            print ("----c----- CACHE HIT {} -----------".format(requestUrl))
 
             if sql_response[1] != None:
                 with open(ctx.options.cacheDirectory + sql_response[1], 'rb') as temp_file:
@@ -76,7 +82,7 @@ class CacheProxy:
                     temp_file.close()
             else:
                 with open(ctx.options.cacheDirectory + sql_response[3], 'rb') as temp_file:
-                    temp_content = temp_file.read()
+                    temp_content = temp_file.read()                
                     temp_file.close()
 
             with open(ctx.options.cacheDirectory + sql_response[0], 'rb') as temp_file:
